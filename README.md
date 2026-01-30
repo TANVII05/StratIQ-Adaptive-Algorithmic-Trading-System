@@ -50,12 +50,6 @@ The Streamlit dashboard provides:
 - Asset-wise PnL breakdown
 - Detailed trade logs with filters
 
-### ▶️ Run the Dashboard Locally
-
-```bash
-pip install -r requirements.txt
-streamlit run app/streamlit_app.py
-
 
 ---
 
@@ -69,6 +63,7 @@ The project can generate the following outputs:
 - Win/Loss distribution analysis
 
 All generated files are stored inside the `outputs/` directory.
+
 
 
 
