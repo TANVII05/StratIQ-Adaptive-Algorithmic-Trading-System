@@ -13,7 +13,7 @@ This repository contains the complete codebase, research notebooks, technical do
 StratIQ is built to reduce market noise and improve signal reliability by requiring multiple confirmations before trade execution:
 
 - **Trend Confirmation:** EMA (13 / 34) crossover
-- **Momentum Filter:** RSI-based regime validation
+- **Momentum Filter:** RSI-based regime validation alongside Volume and ADX
 - **Volatility / Participation Filter:** Trades taken only during expansion phases
 - **Risk Management:** Fixed risk per trade with minimum 1:2 risk-reward ratio
 
@@ -36,7 +36,7 @@ The system supports long and short trading on indices and applies conservative e
 
 - **Language:** Python  
 - **Data Analysis:** pandas, numpy  
-- **Visualization:** plotly  
+- **Visualization:** plotly, matplotlib, seaborn
 - **Dashboard:** Streamlit  
 - **Research:** Jupyter Notebook  
 
@@ -62,7 +62,7 @@ The project can generate the following outputs:
 - Asset-wise performance metrics
 - Win/Loss distribution analysis
 
-All generated files are stored inside the `outputs/` directory.
+All generated files are stored inside the `Results/` directory.
 
 
 
