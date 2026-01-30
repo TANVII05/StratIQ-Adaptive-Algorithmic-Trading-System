@@ -56,4 +56,25 @@ The Streamlit dashboard provides:
 pip install -r requirements.txt
 streamlit run app/streamlit_app.py
 
+## 📄 Documentation
+
+A detailed technical explanation of the strategy, risk framework, and performance analysis is available in:
+docs/StratIQ_Technical_Report.pdf
+
+
+---
+
+## 📈 Outputs
+
+The project can generate the following outputs:
+
+- Trade logs (CSV)
+- Equity curves
+- Asset-wise performance metrics
+- Win/Loss distribution analysis
+
+All generated files are stored inside the `outputs/` directory.
+
+
+
 
