@@ -1,4 +1,4 @@
-# 🚀 StratIQ — Algorithmic Trading Bot  
+#  StratIQ - Algorithmic Trading Bot  
 
 StratIQ is a hybrid, rule-based and regime-adaptive algorithmic trading system designed to capture medium-term market trends while maintaining strict risk control. The strategy combines trend detection, momentum confirmation, and volatility filters to generate high-quality trading signals.
 
@@ -6,23 +6,7 @@ This repository contains the complete codebase, research notebooks, technical do
 
 ---
 
-## 📁 Repository Structure
-StratIQ-AlgoTrading-BatraHedge/
-├── app/
-│ └── streamlit_app.py 
-├── notebooks/
-│ └── Strategy.ipynb 
-├── docs/
-│ └── StratIQ_Technical_Report.pdf
-├── data/ 
-├── outputs/ 
-├── assets/
-│ └── screenshots/ 
-├── requirements.txt 
-└── README.md 
 
-
----
 
 ## 🧠 Project Overview
 
@@ -39,12 +23,12 @@ The system supports long and short trading on indices and applies conservative e
 
 ## ✨ Key Features
 
-- 📈 Trend-following using EMA crossovers  
-- ⚡ Momentum confirmation via RSI  
-- 🌪️ Volatility & participation filters  
-- 🛡️ Strict stop-loss and target-based exits  
-- 📊 Long-term backtesting and performance analysis  
-- 🖥️ Interactive Streamlit dashboard  
+- Trend-following using EMA crossovers  
+- Momentum confirmation via RSI  
+- Volatility & participation filters  
+- Strict stop-loss and target-based exits  
+- Long-term backtesting and performance analysis  
+- Interactive Streamlit dashboard  
 
 ---
 
