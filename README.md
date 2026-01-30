@@ -1,4 +1,4 @@
-#  StratIQ - Algorithmic Trading Bot  
+#  StratIQ - Algorithmic Trading Bot 👨‍💻
 
 StratIQ is a hybrid, rule-based and regime-adaptive algorithmic trading system designed to capture medium-term market trends while maintaining strict risk control. The strategy combines trend detection, momentum confirmation, and volatility filters to generate high-quality trading signals.
 
