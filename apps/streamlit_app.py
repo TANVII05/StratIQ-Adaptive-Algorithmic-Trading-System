@@ -1,281 +1,220 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 import os
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
+import re
 
 # ==============================
-# CONFIG
+# 1. APP CONFIGURATION
 # ==============================
-st.set_page_config(page_title="Algobot Strategy Dashboard", layout="wide")
-st.title("📈 Algobot Strategy Dashboard")
-st.markdown("Select a market file, choose date range, and run your strategy with live charts & backtest.")
+st.set_page_config(
+    page_title="StratIQ Analytics",
+    layout="wide",
+    page_icon="⚡"
+)
 
-DATA_FOLDER = "data"
+st.title("⚡ StratIQ: Algorithmic Strategy Dashboard")
+st.markdown("### 📊 Live Backtest Analysis (Source: all_trades.csv)")
+st.markdown("---")
 
 # ==============================
-# HELPERS
+# 2. DATA LOADER (Robust)
 # ==============================
 @st.cache_data
-def list_data_files(folder):
-    if not os.path.exists(folder):
-        return []
-    return sorted([
-        f for f in os.listdir(folder)
-        if f.lower().endswith((".csv", ".xlsx", ".xls"))
-    ])
+def load_data():
+    # Paths to check
+    possible_paths = ["all_trades.csv", "outputs/csv/all_trades.csv", "data/all_trades.csv"]
+    file_path = None
+    
+    for f in possible_paths:
+        if os.path.exists(f):
+            file_path = f
+            break
+            
+    if not file_path:
+        return None
 
-@st.cache_data
-def detect_date_column(df):
-    for col in df.columns:
-        try:
-            parsed = pd.to_datetime(df[col], errors="coerce")
-            if parsed.notna().sum() / len(df) > 0.6:
-                return col
-        except:
-            pass
-    return None
-
-def detect_close_column(df):
-    priority = ["close", "Close", "CLOSE", "Adj Close", "adjclose"]
-    for col in priority:
-        if col in df.columns:
-            return col
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    return numeric_cols[-1] if numeric_cols else None
-
-# ==============================
-# INDICATORS
-# ==============================
-def compute_indicators(df):
-    df = df.copy()
-
-    df["EMA_13"] = df["close"].ewm(span=13, adjust=False).mean()
-    df["EMA_34"] = df["close"].ewm(span=34, adjust=False).mean()
-
-    delta = df["close"].diff()
-    up = delta.clip(lower=0)
-    down = -1 * delta.clip(upper=0)
-
-    roll_up = up.ewm(com=13, adjust=False).mean()
-    roll_down = down.ewm(com=13, adjust=False).mean()
-
-    rs = roll_up / (roll_down + 1e-9)
-    df["RSI"] = 100 - (100 / (1 + rs))
-
-    return df
-
-# ==============================
-# STRATEGY LOGIC
-# ==============================
-def generate_signals(df):
-    df = df.copy()
-
-    df["long_cond"] = (df["EMA_13"] > df["EMA_34"]) & (df["RSI"] > 50)
-    df["short_cond"] = (df["EMA_13"] < df["EMA_34"]) & (df["RSI"] < 50)
-
-    df["signal"] = 0
-    position = 0
-
-    for i in range(len(df)):
-        if position == 0:
-            if df["long_cond"].iloc[i]:
-                df["signal"].iloc[i] = 1
-                position = 1
-            elif df["short_cond"].iloc[i]:
-                df["signal"].iloc[i] = -1
-                position = -1
-
-        elif position == 1 and df["short_cond"].iloc[i]:
-            df["signal"].iloc[i] = -1
-            position = -1
-
-        elif position == -1 and df["long_cond"].iloc[i]:
-            df["signal"].iloc[i] = 1
-            position = 1
-
-    return df
-
-# ==============================
-# BACKTEST ENGINE
-# ==============================
-def backtest(df, initial_capital=10000, fixed_size=1):
-    df = df.copy().reset_index()
-
-    cash = initial_capital
-    pos = 0
-    entry_price = 0
-    equity_curve = []
-    trades = []
-
-    for i, row in df.iterrows():
-        price = row["close"]
-        signal = row["signal"]
-        date = row.iloc[0]
-
-        if signal == 1 and pos <= 0:
-            if pos < 0:
-                pnl = pos * (entry_price - price)
-                cash += abs(pos) * price
-                trades.append((date, "EXIT SHORT", price, pnl))
-                pos = 0
-
-            pos = fixed_size
-            entry_price = price
-            cash -= fixed_size * price
-            trades.append((date, "BUY", price, 0))
-
-        elif signal == -1 and pos >= 0:
-            if pos > 0:
-                pnl = pos * (price - entry_price)
-                cash += pos * price
-                trades.append((date, "EXIT LONG", price, pnl))
-                pos = 0
-
-            pos = -fixed_size
-            entry_price = price
-            cash += fixed_size * price
-            trades.append((date, "SELL", price, 0))
-
-        equity = cash + pos * price
-        equity_curve.append((date, equity))
-
-    eq_df = pd.DataFrame(equity_curve, columns=["Date", "EquITY"])
-    trade_df = pd.DataFrame(trades, columns=["Date", "Action", "Price", "PnL"])
-
-    return eq_df, trade_df
-
-# ==============================
-# SIDEBAR — FILE PICKER
-# ==============================
-st.sidebar.header("📂 Market File Selection")
-
-files = list_data_files(DATA_FOLDER)
-
-if not files:
-    st.error("No files found in 'data/' folder")
-    st.stop()
-
-selected_file = st.sidebar.selectbox("Select Symbol / Index", files)
-
-file_path = os.path.join(DATA_FOLDER, selected_file)
-
-# ==============================
-# LOAD FILE
-# ==============================
-if selected_file.lower().endswith(".csv"):
     df = pd.read_csv(file_path)
-else:
-    df = pd.read_excel(file_path)
 
-date_col = detect_date_column(df)
-close_col = detect_close_column(df)
+    # Regex Date Cleaner (Extract YYYY-MM-DD from messy text)
+    def extract_clean_date(val):
+        if pd.isna(val): return None
+        match = re.search(r'(\d{4}-\d{2}-\d{2})', str(val))
+        return match.group(1) if match else None
 
-if date_col is None or close_col is None:
-    st.error("Couldn't detect Date or Close column in file")
+    # Apply cleaning
+    if "Entry Date" in df.columns:
+        df["Clean_Date"] = df["Entry Date"].apply(extract_clean_date)
+        df["Entry_Date_Parsed"] = pd.to_datetime(df["Clean_Date"], errors="coerce")
+    
+    # Rename columns for internal use
+    df = df.rename(columns={
+        "Entry": "Entry_Price", 
+        "Exit": "Exit_Price",
+        "Entry Date": "Raw_Entry_Date"
+    })
+
+    # Drop invalid rows & Sort
+    df = df.dropna(subset=["Entry_Date_Parsed"])
+    df = df.sort_values("Entry_Date_Parsed")
+    
+    return df
+
+# Load Data
+df = load_data()
+
+if df is None:
+    st.error("❌ 'all_trades.csv' not found. Please ensure the file exists.")
     st.stop()
 
-df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-df = df.dropna(subset=[date_col])
-df = df.sort_values(date_col)
+# ==============================
+# 3. SIDEBAR FILTERS
+# ==============================
+st.sidebar.header("🔍 Filter Dashboard")
 
-df = df.rename(columns={close_col: "close"})
-df = df.set_index(date_col)
+# Asset Filter
+all_symbols = sorted(df["Symbol"].unique())
+selected_symbols = st.sidebar.multiselect("Select Assets", all_symbols, default=all_symbols)
 
-st.success(f"Loaded: {selected_file}")
+# Direction Filter
+all_directions = df["Direction"].unique()
+selected_directions = st.sidebar.multiselect("Trade Direction", all_directions, default=all_directions)
+
+# Date Range Filter
+min_date = df["Entry_Date_Parsed"].min().date()
+max_date = df["Entry_Date_Parsed"].max().date()
+
+try:
+    start_date = st.sidebar.date_input("Start Date", min_date, min_value=min_date, max_value=max_date)
+    end_date = st.sidebar.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
+except:
+    st.sidebar.warning("Date range error. Resetting.")
+    start_date, end_date = min_date, max_date
+
+# Apply Filters
+mask = (
+    (df["Symbol"].isin(selected_symbols)) &
+    (df["Direction"].isin(selected_directions)) &
+    (df["Entry_Date_Parsed"].dt.date >= start_date) &
+    (df["Entry_Date_Parsed"].dt.date <= end_date)
+)
+filtered_df = df[mask].copy()
+
+if filtered_df.empty:
+    st.warning("⚠️ No trades found for this selection.")
+    st.stop()
 
 # ==============================
-# DATE FILTER
+# 4. KPI CALCULATIONS (Fixed Win Rate)
 # ==============================
-st.sidebar.header("📅 Date Range")
+total_trades = len(filtered_df)
 
-min_date = df.index.min().date()
-max_date = df.index.max().date()
+# FIX: Calculate Wins/Losses based on PnL > 0 (More reliable than string matching)
+wins = filtered_df[filtered_df["PnL"] > 0]
+losses = filtered_df[filtered_df["PnL"] <= 0]
 
-start_date = st.sidebar.date_input("Start Date", min_date, min_value=min_date, max_value=max_date)
-end_date = st.sidebar.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
+win_count = len(wins)
+loss_count = len(losses)
+win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0.0
 
-if start_date > end_date:
-    start_date, end_date = end_date, start_date
-
-df = df.loc[str(start_date):str(end_date)]
-
-# ==============================
-# STRATEGY SETTINGS
-# ==============================
-st.sidebar.header("⚙ Strategy Settings")
-initial_capital = st.sidebar.number_input("Initial Capital (₹)", value=10000, step=1000)
-fixed_size = st.sidebar.number_input("Fixed Trade Size", value=1, min_value=1)
-
-run = st.sidebar.button("🚀 Run Strategy")
+net_pnl = filtered_df["PnL"].sum()
+gross_profit = wins["PnL"].sum()
+gross_loss = abs(losses["PnL"].sum())
+avg_win = wins["PnL"].mean() if not wins.empty else 0
+avg_loss = losses["PnL"].mean() if not losses.empty else 0
+profit_factor = (gross_profit / gross_loss) if gross_loss != 0 else 0
 
 # ==============================
-# RUN STRATEGY
+# 5. TOP METRICS ROW
 # ==============================
-if run:
-    df = compute_indicators(df)
-    df = generate_signals(df)
-    equity, trades = backtest(df, initial_capital, fixed_size)
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Net PnL", f"{net_pnl:,.2f}")
+col2.metric("Win Rate", f"{win_rate:.1f}%") # This will now work 100%
+col3.metric("Profit Factor", f"{profit_factor:.2f}")
+col4.metric("Total Trades", f"{total_trades}")
 
-    # ==============================
-    # CHART
-    # ==============================
-    fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True,
-        row_heights=[0.7, 0.3],
-        vertical_spacing=0.05,
-        subplot_titles=("Price + EMAs + Signals", "RSI")
+st.markdown("---")
+
+# ==============================
+# 6. SPLIT VIEW: P&L TABLE (Left) + EQUITY CHART (Right)
+# ==============================
+col_stats, col_charts = st.columns([1, 2])
+
+with col_stats:
+    st.subheader("📋 Net P&L Statement")
+    
+    # Financial Statement Data
+    stats_data = {
+        "Metric": [
+            "Total Gross Profit",
+            "Total Gross Loss",
+            "Net Profit / Loss",
+            "Largest Win",
+            "Largest Loss",
+            "Average Win",
+            "Average Loss",
+            "Risk : Reward Ratio"
+        ],
+        "Value": [
+            f"{gross_profit:,.2f}",
+            f"-{gross_loss:,.2f}",
+            f"{net_pnl:,.2f}",
+            f"{filtered_df['PnL'].max():,.2f}",
+            f"{filtered_df['PnL'].min():,.2f}",
+            f"{avg_win:,.2f}",
+            f"{avg_loss:,.2f}",
+            f"1 : {abs(avg_win/avg_loss):.2f}" if avg_loss != 0 else "N/A"
+        ]
+    }
+    # Display as a clean table
+    st.dataframe(pd.DataFrame(stats_data), hide_index=True, use_container_width=True)
+
+with col_charts:
+    st.subheader("📈 Portfolio Growth Curve")
+    # Equity Curve Logic
+    filtered_df = filtered_df.sort_values("Entry_Date_Parsed")
+    filtered_df["Cumulative_PnL"] = filtered_df["PnL"].cumsum()
+    
+    fig_eq = px.line(filtered_df, x="Entry_Date_Parsed", y="Cumulative_PnL", 
+                     labels={"Cumulative_PnL": "Net PnL", "Entry_Date_Parsed": "Date"})
+    fig_eq.update_traces(line_color='#2ecc71', fill='tozeroy')
+    fig_eq.update_layout(height=400)
+    st.plotly_chart(fig_eq, use_container_width=True)
+
+# ==============================
+# 7. TABS FOR VISUALS (Asset Perf + Pie Chart + Raw Data)
+# ==============================
+st.markdown("### 📊 Detailed Analysis")
+tab1, tab2, tab3 = st.tabs(["📊 Asset Performance", "🥧 Win/Loss Distribution", "📑 Raw Trade Logs"])
+
+with tab1:
+    # Bar chart of PnL by Symbol
+    symbol_perf = filtered_df.groupby("Symbol")["PnL"].sum().sort_values(ascending=False).reset_index()
+    fig_bar = px.bar(symbol_perf, x="Symbol", y="PnL", color="PnL", 
+                     color_continuous_scale="RdYlGn", title="Net Profit by Asset")
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with tab2:
+    # Win/Loss Pie Chart
+    outcome_labels = ["Wins", "Losses"]
+    outcome_values = [win_count, loss_count]
+    
+    fig_pie = px.pie(names=outcome_labels, values=outcome_values, 
+                     color=outcome_labels,
+                     color_discrete_map={"Wins": "#27ae60", "Losses": "#e74c3c"},
+                     title=f"Win Rate: {win_rate:.1f}%")
+    st.plotly_chart(fig_pie, use_container_width=True)
+
+with tab3:
+    # Raw Data Table
+    st.markdown("#### Detailed Trade Log")
+    # Columns to show
+    display_cols = ["Entry_Date_Parsed", "Symbol", "Direction", "Entry_Price", "Exit_Price", "SL", "Target", "PnL", "Result"]
+    valid_cols = [c for c in display_cols if c in filtered_df.columns]
+
+    st.dataframe(
+        filtered_df[valid_cols].sort_values("Entry_Date_Parsed", ascending=False),
+        use_container_width=True,
+        height=400
     )
-
-    fig.add_trace(go.Scatter(x=df.index, y=df["close"], name="Close"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["EMA_13"], name="EMA 13"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["EMA_34"], name="EMA 34"), row=1, col=1)
-
-    buys = df[df["signal"] == 1]
-    sells = df[df["signal"] == -1]
-
-    fig.add_trace(go.Scatter(
-        x=buys.index, y=buys["close"],
-        mode="markers", name="BUY",
-        marker=dict(symbol="triangle-up", size=10)
-    ), row=1, col=1)
-
-    fig.add_trace(go.Scatter(
-        x=sells.index, y=sells["close"],
-        mode="markers", name="SELL",
-        marker=dict(symbol="triangle-down", size=10)
-    ), row=1, col=1)
-
-    fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"), row=2, col=1)
-
-    fig.update_layout(height=800, hovermode="x unified")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ==============================
-    # EQUITY CURVE
-    # ==============================
-    st.subheader("📊 Equity Curve")
-    eq_fig = go.Figure()
-    eq_fig.add_trace(go.Scatter(x=equity["Date"], y=equity["EquITY"], name="Equity"))
-    st.plotly_chart(eq_fig, use_container_width=True)
-
-    # ==============================
-    # METRICS
-    # ==============================
-    start_eq = equity["EquITY"].iloc[0]
-    end_eq = equity["EquITY"].iloc[-1]
-    ret = ((end_eq - start_eq) / start_eq) * 100
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Start Capital", f"₹{start_eq:,.2f}")
-    col2.metric("End Capital", f"₹{end_eq:,.2f}")
-    col3.metric("Return %", f"{ret:.2f}%")
-
-    # ==============================
-    # TRADES
-    # ==============================
-    st.subheader("📑 Trade Log")
-    st.dataframe(trades.tail(30))
-
-    st.success("Strategy executed successfully! 🎯")
